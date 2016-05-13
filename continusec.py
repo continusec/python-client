@@ -76,6 +76,7 @@ import base64
 import hashlib
 import unicodedata
 import json
+import time
 
 
 HEAD = 0
@@ -103,6 +104,18 @@ class InternalError(ContinusecError):
 
 
 class ObjectHashError(ContinusecError):
+    pass
+
+
+class ObjectConflictError(ContinusecError):
+    pass
+
+
+class VerificationFailedError(ContinusecError):
+    pass
+
+
+class NotAllEntriesReturnedError(ContinusecError):
     pass
 
 
@@ -183,29 +196,6 @@ def object_hash_with_redaction(o, prefix="***REDACTED*** Hash: "):
         raise ObjectHashError()
 
 
-def test_object_hash(path):
-    state = 0
-    for line in file(path, 'rb'):
-        line = line.strip()
-        if len(line) > 0:
-            if line[0] != '#':
-                if state == 0:
-                    j = line
-                    state = 1
-                elif state == 1:
-                    a = line
-
-                    if object_hash(json.loads(j)) == binascii.unhexlify(a):
-                        print 'Match! - ', j
-                    else:
-                        print 'Fail! - ', j
-
-                    state = 0
-
-
-#test_object_hash("../../objecthash/common_json.test")
-
-
 class Client(object):
     def __init__(self, account, api_key, base_url="https://api.continusec.com"):
         self._account = account
@@ -221,7 +211,6 @@ class Client(object):
 
     def _make_request(self, method, path, data=None):
         url = self._base_url + "/v1/account/" + str(self._account) + path
-        #print url
         conn = {'https': httplib.HTTPSConnection, 'http': httplib.HTTPConnection} \
             [self._base_parts.scheme](self._base_parts.netloc)
         headers = {'Authorization': 'Key ' + self._api_key}
@@ -235,6 +224,8 @@ class Client(object):
             raise UnauthorizedError()
         elif resp.status == 404:
             raise NotFoundError()
+        elif resp.status == 409:
+            raise ObjectConflictError()
         else:
             raise InternalError()
 
@@ -275,6 +266,177 @@ class VerifiableMap(object):
         obj = json.loads(data)
         return int(obj['mutation_log']['tree_size']), base64.b64decode(obj['map_hash'])
 
+class RawDataEntryFactory(object):
+    def create_from_bytes(self, b):
+        return RawDataEntry(b)
+    def format(self):
+        return ""
+
+class JsonEntryFactory(object):
+    def create_from_bytes(self, b):
+        return JsonEntry(b)
+    def format(self):
+        return "/xjson"
+
+class RedactedJsonEntryFactory(object):
+    def create_from_bytes(self, b):
+        return RedactedJsonEntry(b)
+    def format(self):
+        return "/xjson"
+
+class RawDataEntry(object):
+    def __init__(self, data):
+        self._data = data
+    def data(self):
+        return self._data
+    def data_for_upload(self):
+        return self._data
+    def format(self):
+        return ""
+    def leaf_hash(self):
+        return leaf_merkle_tree_hash(self._data)
+
+class JsonEntry(object):
+    def __init__(self, data):
+        self._data = data
+    def data(self):
+        return self._data
+    def data_for_upload(self):
+        return self._data
+    def format(self):
+        return "/xjson"
+    def leaf_hash(self):
+        return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
+
+class RedactableJsonEntry(object):
+    def __init__(self, data):
+        self._data = data
+    def data_for_upload(self):
+        return self._data
+    def format(self):
+        return "/xjson/redactable"
+
+class RedactedJsonEntry(object):
+    def __init__(self, data):
+        self._data = data
+    def data(self):
+        return self._data
+    def leaf_hash(self):
+        return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
+
+class AddEntryResponse(object):
+    def __init__(self, leaf_hash):
+        self._leaf_hash = leaf_hash
+    def leaf_hash(self):
+        return self._leaf_hash
+
+class LogTreeHead(object):
+    def __init__(self, tree_size, root_hash):
+        self._tree_size = tree_size
+        self._root_hash = root_hash
+    def tree_size(self):
+        return self._tree_size
+    def root_hash(self):
+        return self._root_hash
+
+
+class LogConsistencyProof(object):
+    def __init__(self, first_size, second_size, audit_path):
+        self._first_size = first_size
+        self._second_size = second_size
+        self._audit_path = audit_path
+    def first_size(self):
+        return self._first_size
+    def second_size(self):
+        return self._second_size
+    def audit_path(self):
+        return self._audit_path
+    def verify(self, first, second):
+        if first.tree_size() != self._first_size:
+            raise VerificationFailedError()
+        if second.tree_size() != self._second_size:
+            raise VerificationFailedError()
+
+        if self._first_size < 1 or self._first_size >= self._second_size:
+            raise VerificationFailedError()
+
+        proof = self._audit_path
+        if is_pow_2(self._first_size):
+            proof = [first_hash] + proof
+
+        fn, sn = self._first_size - 1, self._second_size - 1
+        while fn & 1 == 1:
+            fn >>= 1
+            sn >>= 1
+
+        if len(proof) == 0:
+            raise VerificationFailedError()
+
+        fr = sr = proof[0]
+        for c in proof[1:]:
+            if sn == 0:
+                raise VerificationFailedError()
+
+            if fn & 1 == 1 or fn == sn:
+                fr = node_merkle_tree_hash(c, fr)
+                sr = node_merkle_tree_hash(c, sr)
+                while not (fn == 0 or fn & 1 == 1):
+                    fn >>= 1
+                    sn >>= 1
+            else:
+                sr = node_merkle_tree_hash(sr, c)
+            fn >>= 1
+            sn >>= 1
+
+        if sn != 0:
+            raise VerificationFailedError()
+
+        if fr != first.root_hash():
+            raise VerificationFailedError()
+
+        if sr != second.root_hash():
+            raise VerificationFailedError()
+
+
+class LogInclusionProof(object):
+    def __init__(self, leaf_hash, tree_size, leaf_index, audit_path):
+        self._leaf_hash = leaf_hash
+        self._tree_size = tree_size
+        self._leaf_index = leaf_index
+        self._audit_path = audit_path
+    def tree_size(self):
+        return self._tree_size
+    def audit_path(self):
+        return self._audit_path
+    def leaf_hash(self):
+        return self._leaf_hash
+    def leaf_index(self):
+        return self._leaf_index
+    def verify(self, head):
+        if head.tree_size() != self._tree_size:
+            raise VerificationFailedError()
+        if self._leaf_index >= self._tree_size or self._leaf_index < 0:
+            raise VerificationFailedError()
+
+        fn, sn = self._leaf_index, self._tree_size - 1
+        r = self._leaf_hash
+        for p in self._audit_path:
+            if fn == sn or fn & 1 == 1:
+                r = node_merkle_tree_hash(p, r)
+                while not (fn == 0 or fn & 1 == 1):
+                    fn >>= 1
+                    sn >>= 1
+            else:
+                r = node_merkle_tree_hash(r, p)
+            fn >>= 1
+            sn >>= 1
+
+        if sn != 0:
+            raise VerificationFailedError()
+
+        if r != head.root_hash():
+            raise VerificationFailedError()
+
 
 class VerifiableLog(object):
     def __init__(self, client, path):
@@ -285,40 +447,134 @@ class VerifiableLog(object):
         self._client("PUT", self._path)
 
     def add(self, data):
-        rv, _ = self._client("POST", self._path + "/entry", data)
-        return base64.b64decode(json.loads(rv)['leaf_hash'])
+        rv, _ = self._client("POST", self._path + "/entry" + data.format(), data.data_for_upload())
+        return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
 
-    def tree_hash(self, tree_size=HEAD):
+    def tree_head(self, tree_size=HEAD):
         data, _ = self._client("GET", self._path + "/tree/" + str(tree_size))
         obj = json.loads(data)
-        return int(obj['tree_size']), None if obj['tree_hash'] is None else \
-                                          base64.b64decode(obj['tree_hash'])
+        return LogTreeHead(int(obj['tree_size']), None if obj['tree_hash'] is None else \
+                                          base64.b64decode(obj['tree_hash']))
 
-    def get_entry(self, idx):
-        rv, _ = self._client("GET", self._path + "/entry/" + str(idx))
-        return rv
+    def entry(self, idx, factory):
+        rv, _ = self._client("GET", self._path + "/entry/" + str(idx) + factory.format())
+        return factory.create_from_bytes(rv)
 
-    def get_entries(self, start, end):
+    def entries(self, start, end, factory):
         batch = 500
         rv = []
-        while start < end:
+        done = False
+        while start < end and not done:
             contents, _ = self._client("GET", self._path + "/entries/" + str(start) + \
-                                       "-" + str(min(start + batch, end)))
+                                       "-" + str(min(start + batch, end)) + factory.format())
+            gotOne = False
             for x in json.loads(contents)["entries"]:
-                rv.append(x["leaf_data"])
+                rv.append(factory.create_from_bytes(base64.b64decode(x["leaf_data"])))
                 start += 1
+                gotOne = True
+
+            if not gotOne:
+                done = True
         return rv
 
-    def inclusion_proof(self, tree_size, mtlHash):
-        value, _ = self._client("GET", self._path + "/tree/" + str(tree_size) + \
-                                "/inclusion/h/" + binascii.hexlify(mtlHash))
+    def inclusion_proof(self, head, leaf):
+        value, _ = self._client("GET", self._path + "/tree/" + str(head.tree_size()) + \
+                                "/inclusion/h/" + binascii.hexlify(leaf.leaf_hash()))
         obj = json.loads(value)
-        return int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']]
+        return LogInclusionProof(leaf.leaf_hash(), int(obj['tree_size']), int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']])
+
+    def inclusion_proof_by_index(self, tree_size, leaf_index):
+        value, _ = self._client("GET", self._path + "/tree/" + str(tree_size) + \
+                                "/inclusion/" + str(leaf_index))
+        obj = json.loads(value)
+        return LogInclusionProof(None, int(obj['tree_size']), int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']])
 
     def consistency_proof(self, first, second):
-        value, _ = self._client("GET", self._path + "/tree/" + str(second) + \
-                                "/consistency/" + str(first))
-        return [base64.b64decode(x) for x in json.loads(value)['proof']]
+        value, _ = self._client("GET", self._path + "/tree/" + str(second.tree_size()) + \
+                                "/consistency/" + str(first.tree_size()))
+        return LogConsistencyProof(first.tree_size(), second.tree_size(), \
+                                   [base64.b64decode(x) for x in json.loads(value)['proof']])
+
+    def block_until_present(self, leaf):
+        last = -1
+        secs = 0
+        while 1:
+            lth = self.tree_head(HEAD)
+            if lth.tree_size() > last:
+                last = lth.tree_size()
+                try:
+                    if self.inclusion_proof(lth, leaf) != None:
+                        return lth
+                except InvalidRangeError:
+                    pass
+                secs = 1
+            else:
+                secs *= 2
+
+            time.sleep(secs)
+
+    def fetch_verified_tree_head(self, prev):
+        head = self.tree_head(HEAD)
+        if head.tree_size() <= prev.tree_size():
+            return prev
+        else:
+            if prev.tree_size() != 0:
+                proof = self.consistency_proof(prev, head)
+                proof.verify(prev, head)
+
+            return head
+
+    def verify_supplied_proof(self, prev, proof):
+        headForIncl = None
+        if proof.tree_size() == prev.tree_size():
+            headForIncl = prev
+        else:
+            headForIncl = self.tree_head(proof.tree_size())
+            if prev.tree_size() != 0:
+                if prev.tree_size() < headForIncl.tree_size():
+                    self.consistency_proof(prev, headForIncl).verify(prev, headForIncl)
+                elif prev.tree_size() > headForIncl.tree_size():
+                    self.consistency_proof(headForIncl, prev).verify(headForIncl, prev)
+                else:
+                    raise VerificationFailedError()
+
+        proof.verify(headForIncl)
+        return headForIncl
+
+    def audit_log_entries(self, prev, head, factory, auditor):
+        if prev is None or prev.tree_size() < head.tree_size():
+            stack = []
+            if prev is not None and prev.tree_size() > 0:
+                p = self.inclusion_proof_by_index(prev.tree_size()+1, prev.tree_size())
+                fh = None
+                for b in p.audit_path():
+                    if fh is None:
+                        fh = b
+                    else:
+                        fh = node_merkle_tree_hash(b, fh)
+                if fh != prev.root_hash():
+                    raise VerificationFailedError()
+                for b in p.audit_path()[::-1]:
+                    stack.append(b)
+            idx = 0
+            if prev is not None:
+                idx = prev.tree_size()
+            for e in self.entries(idx, head.tree_size(), factory):
+                auditor.audit_log_entry(idx, e)
+                stack.append(e.leaf_hash())
+                z = idx
+                while (z & 1) == 1:
+                    stack[-2:] = [node_merkle_tree_hash(stack[-2], stack[-1])]
+                    z >>= 1
+                idx += 1
+            if idx != head.tree_size():
+                raise NotAllEntriesReturnedError()
+
+            while len(stack) > 1:
+                stack[-2:] = [node_merkle_tree_hash(stack[-2], stack[-1])]
+
+            if stack[0] != head.root_hash():
+                raise VerificationFailedError()
 
 
 def node_merkle_tree_hash(l, r):
@@ -339,59 +595,6 @@ def calc_k(n):
         k <<= 1
     return k
 
-
-def verify_log_consistency_proof(first, second, first_hash, second_hash, proof):
-    if first < 1 or first >= second:
-        return False
-
-    if is_pow_2(first):
-        proof = [first_hash] + proof
-
-    fn, sn = first - 1, second - 1
-    while fn & 1 == 1:
-        fn >>= 1
-        sn >>= 1
-
-    if len(proof) == 0:
-        return False
-
-    fr = sr = proof[0]
-    for c in proof[1:]:
-        if sn == 0:
-            return False
-
-        if fn & 1 == 1 or fn == sn:
-            fr = node_merkle_tree_hash(c, fr)
-            sr = node_merkle_tree_hash(c, sr)
-            while not (fn == 0 or fn & 1 == 1):
-                fn >>= 1
-                sn >>= 1
-        else:
-            sr = node_merkle_tree_hash(sr, c)
-        fn >>= 1
-        sn >>= 1
-
-    return sn == 0 and first_hash == fr and second_hash == sr
-
-
-def verify_log_inclusion_proof(idx, tree_size, leaf_hash, root_hash, proof):
-    if idx >= tree_size or idx < 0:
-        return False
-
-    fn, sn = idx, tree_size - 1
-    r = leaf_hash
-    for p in proof:
-        if fn == sn or fn & 1 == 1:
-            r = node_merkle_tree_hash(p, r)
-            while not (fn == 0 or fn & 1 == 1):
-                fn >>= 1
-                sn >>= 1
-        else:
-            r = node_merkle_tree_hash(r, p)
-        fn >>= 1
-        sn >>= 1
-
-    return r == root_hash and sn == 0
 
 
 def verify_map_inclusion_proof(key, value, proof, root_hash):
