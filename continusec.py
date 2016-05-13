@@ -182,10 +182,13 @@ def object_hash_with_redaction(o, prefix="***REDACTED*** Hash: "):
         return object_hash_list(o, prefix)
     elif t is dict:
         return object_hash_dict(o, prefix)
-    elif t is unicode:
-        return hashlib.sha256('u' + unicodedata.normalize("NFC", o).encode('utf-8')).digest()
-    elif t is str:
-        return hashlib.sha256('u' + unicodedata.normalize("NFC", unicode(o)).encode('utf-8')).digest()
+    elif t is unicode or t is str:
+        if t is str:
+            o = unicode(o)
+        if prefix and o.startswith(prefix):
+            return binascii.unhexlify(o[len(prefix):])
+        else:
+            return hashlib.sha256('u' + unicodedata.normalize("NFC", o).encode('utf-8')).digest()
     elif t is float or t is int: # json, sigh, only knows floats, not ints
         return object_hash_float(o * 1.0)
     elif t is bool:
@@ -194,6 +197,36 @@ def object_hash_with_redaction(o, prefix="***REDACTED*** Hash: "):
         return hashlib.sha256('n').digest()
     else:
         raise ObjectHashError()
+
+
+def shed_redactable(o, prefix="***REDACTED*** Hash: "):
+    if o is None:
+        return None
+    else:
+        t = type(o)
+        if t is list:
+            return [shed_redactable(x, prefix) for x in o]
+        elif t is dict:
+            rv = {}
+            for k, v in o.items():
+                tv = type(v)
+                if tv is list:
+                    if len(v) == 2:
+                        rv[k] = shed_redactable(v[1], prefix)
+                    else:
+                        raise ObjectHashError()
+                elif tv is unicode or tv is str:
+                    if tv is str:
+                        v = unicode(v)
+                    if v.startswith(prefix):
+                        pass
+                    else:
+                        raise ObjectHashError()
+                else:
+                    raise ObjectHashError()
+            return rv
+        else:
+            return o
 
 
 class Client(object):
@@ -320,7 +353,7 @@ class RedactedJsonEntry(object):
     def __init__(self, data):
         self._data = data
     def data(self):
-        return self._data
+        return json.dumps(shed_redactable(json.loads(self._data)))
     def leaf_hash(self):
         return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
 
