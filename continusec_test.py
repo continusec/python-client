@@ -193,6 +193,52 @@ if 'adam' not in dd:
 inclProof = log.inclusion_proof(head103, redEnt)
 inclProof.verify(head103)
 
-'''
+vmap = client.verifiable_map("nnewtestmap")
+try:
+    vmap.tree_head(continusec.HEAD)
+except continusec.NotFoundError:
+    pass
 
-'''
+vmap.create()
+try:
+    vmap.create();
+    raise "blah"
+except continusec.ObjectConflictError:
+    pass
+
+vmap.set("foo", continusec.RawDataEntry("foo"))
+vmap.set("fiz", continusec.JsonEntry("{\"name\":\"adam\",\"ssn\":123.45}"))
+
+waitResp = vmap.set("foz", continusec.RedactableJsonEntry("{\"name\":\"adam\",\"ssn\":123.45}"))
+for i in range(100):
+    vmap.set("foo%i" % i, continusec.RawDataEntry("fooval%i" % i))
+
+vmap.delete("foo")
+vmap.delete("foodddd")
+vmap.delete("foo27")
+
+mlHead = vmap.mutation_log().block_until_present(waitResp)
+if mlHead.tree_size() != 106:
+    raise
+
+mrHead = vmap.block_until_size(mlHead.tree_size())
+if mrHead.mutation_log_tree_head().tree_size() != 106:
+    raise
+
+entryResp = vmap.get("foo", mrHead, continusec.RawDataEntryFactory())
+entryResp.verify(mrHead)
+dd = entryResp.value().data()
+if len(dd) > 0:
+    raise dd
+
+entryResp = vmap.get("foo-29", mrHead, continusec.RawDataEntryFactory())
+entryResp.verify(mrHead)
+dd = entryResp.value().data()
+if len(dd) > 0:
+    raise dd
+
+entryResp = vmap.get("foo29", mrHead, continusec.RawDataEntryFactory())
+entryResp.verify(mrHead)
+dd = entryResp.value().data()
+if dd != "fooval29":
+    raise dd

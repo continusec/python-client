@@ -277,27 +277,90 @@ class VerifiableMap(object):
     def create(self):
         self._client("PUT", self._path)
 
-    def get(self, key, tree_size):
-        value, headers = self._client("GET", self._path + "/tree/" + str(tree_size) + \
-                                      "/key/h/" + binascii.hexlify(key))
+    def get(self, key, map_head, factory):
+        value, headers = self._client("GET", self._path + "/tree/" + str(map_head.mutation_log_tree_head().tree_size()) + \
+                                      "/key/h/" + binascii.hexlify(key) + factory.format())
         proof = [None] * 256
+        vts = -1
         for k, v in headers:
             if k.lower() == 'x-verified-proof':
                 for z in v.split(','):
                     x, y = z.split('/')
                     proof[int(x.strip())] = binascii.unhexlify(y.strip())
-        return value, proof
+            elif k.lower() == 'x-verified-treesize':
+                vts = int(v.strip())
+
+        return MapEntryResponse(key, factory.create_from_bytes(value), vts, proof)
 
     def set(self, key, value):
-        self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key), value)
+        rv, _ = self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key) + value.format(), value.data_for_upload())
+        return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
 
     def delete(self, key):
-        self._client("DELETE", self._path + "/key/h/" + binascii.hexlify(key))
+        rv, _ = self._client("DELETE", self._path + "/key/h/" + binascii.hexlify(key))
+        return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
 
-    def tree_hash(self, tree_size=HEAD):
+    def tree_head(self, tree_size=HEAD):
         data, _ = self._client("GET", self._path + "/tree/" + str(tree_size))
         obj = json.loads(data)
-        return int(obj['mutation_log']['tree_size']), base64.b64decode(obj['map_hash'])
+        return MapTreeHead(LogTreeHead(int(obj['mutation_log']['tree_size']),
+            None if obj['mutation_log']['tree_hash'] is None
+            else base64.b64decode(obj['mutation_log']['tree_hash'])),
+            base64.b64decode(obj['map_hash']))
+
+    def block_until_size(self, size):
+        last = -1
+        secs = 0
+        while 1:
+            lth = self.tree_head(HEAD)
+            if lth.mutation_log_tree_head().tree_size() > last:
+                last = lth.mutation_log_tree_head().tree_size()
+                if last >= size:
+                    return lth
+                else:
+                    secs = 1
+            else:
+                secs *= 2
+
+            time.sleep(secs)
+
+
+class MapEntryResponse(object):
+    def __init__(self, key, value, tree_size, audit_path):
+        self._key = key
+        self._value = value
+        self._tree_size = tree_size
+        self._audit_path = audit_path
+
+    def key(self):
+        return self._key
+
+    def value(self):
+        return self._value
+
+    def tree_size(self):
+        return self._tree_size
+
+    def audit_path(self):
+        return self._audit_path
+
+    def verify(self, head):
+        if head.mutation_log_tree_head().tree_size() != self._tree_size:
+            raise VerificationFailedError()
+        kp = construct_map_key_path(self._key)
+        t = self._value.leaf_hash()
+        for i in range(len(kp) - 1, -1, -1):
+            p = self._audit_path[i]
+            if p is None:
+                p = DEFAULT_LEAF_VALUES[i + 1]
+
+            if kp[i]:
+                t = node_merkle_tree_hash(p, t)
+            else:
+                t = node_merkle_tree_hash(t, p)
+        if t != head.root_hash():
+            raise VerificationFailedError()
+
 
 class RawDataEntryFactory(object):
     def create_from_bytes(self, b):
@@ -372,6 +435,14 @@ class LogTreeHead(object):
     def root_hash(self):
         return self._root_hash
 
+class MapTreeHead(object):
+    def __init__(self, mutation_log_tree_head, root_hash):
+        self._mutation_log_tree_head = mutation_log_tree_head
+        self._root_hash = root_hash
+    def mutation_log_tree_head(self):
+        return self._mutation_log_tree_head
+    def root_hash(self):
+        return self._root_hash
 
 class LogConsistencyProof(object):
     def __init__(self, first_size, second_size, audit_path):
@@ -627,23 +698,6 @@ def calc_k(n):
     while (k << 1) < n:
         k <<= 1
     return k
-
-
-
-def verify_map_inclusion_proof(key, value, proof, root_hash):
-    kp = construct_map_key_path(key)
-    t = leaf_merkle_tree_hash(value)
-    for i in range(len(kp) - 1, -1, -1):
-        p = proof[i]
-        if p is None:
-            p = DEFAULT_LEAF_VALUES[i + 1]
-
-        if kp[i]:
-            t = node_merkle_tree_hash(p, t)
-        else:
-            t = node_merkle_tree_hash(t, p)
-    return t == root_hash
-
 
 def generate_map_default_leaf_values():
     rv = [None] * 257
