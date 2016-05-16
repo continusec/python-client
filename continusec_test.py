@@ -91,17 +91,17 @@ if head.tree_size() != 3:
 for i in range(100):
     log.add(continusec.RawDataEntry("foo-%i" % i))
 
-head103 = log.fetch_verified_tree_head(head)
+head103 = log.verified_latest_tree_head(head)
 if head103.tree_size() != 103:
     raise "fds"
 
 try:
-    log.inclusion_proof(head103, continusec.RawDataEntry("foo27"))
+    log.inclusion_proof(head103.tree_size(), continusec.RawDataEntry("foo27"))
     raise "fds"
 except continusec.NotFoundError:
     pass
 
-inclProof = log.inclusion_proof(head103, continusec.RawDataEntry("foo-27"))
+inclProof = log.inclusion_proof(head103.tree_size(), continusec.RawDataEntry("foo-27"))
 inclProof.verify(head103)
 
 try:
@@ -115,7 +115,7 @@ head50 = log.tree_head(50)
 if head50.tree_size() != 50:
     raise "fsd"
 
-cons = log.consistency_proof(head50, head103)
+cons = log.consistency_proof(head50.tree_size(), head103.tree_size())
 cons.verify(head50, head103)
 
 try:
@@ -124,9 +124,9 @@ try:
 except continusec.VerificationFailedError:
     pass
 
-inclProof = log.inclusion_proof(continusec.LogTreeHead(10, None), continusec.RawDataEntry("foo"))
+inclProof = log.inclusion_proof(10, continusec.RawDataEntry("foo"))
 
-h10 = log.verify_supplied_proof(head103, inclProof)
+h10 = log.verify_supplied_inclusion_proof(head103, inclProof)
 if h10.tree_size() != 10:
     raise "fds"
 
@@ -140,14 +140,14 @@ class Counter(object):
         return self._count
 
 c = Counter()
-log.audit_log_entries(continusec.LogTreeHead(0, None), head103, continusec.RawDataEntryFactory(), c)
+log.verify_entries(None, head103, continusec.RawDataEntryFactory(), c)
 if c.count() != 103:
     raise "bloop"
 
 head1 = log.tree_head(1)
 c = Counter()
 try:
-    log.audit_log_entries(head1, head103, continusec.JsonEntryFactory(), c)
+    log.verify_entries(head1, head103, continusec.JsonEntryFactory(), c)
     raise "blah"
 except continusec.NotAllEntriesReturnedError:
     pass
@@ -156,17 +156,16 @@ if c.count() != 0:
 
 head3 = log.tree_head(3)
 c = Counter()
-log.audit_log_entries(head1, head3, continusec.JsonEntryFactory(), c)
+log.verify_entries(head1, head3, continusec.JsonEntryFactory(), c)
 if c.count() != 2:
     raise "bloop"
 
 c = Counter()
-log.audit_log_entries(head50, head103, continusec.RawDataEntryFactory(), c)
+log.verify_entries(head50, head103, continusec.RawDataEntryFactory(), c)
 if c.count() != 53:
     raise "bloop"
 
-inclProof = log.inclusion_proof(head103, continusec.JsonEntry("{    \"ssn\":  123.4500 ,   \"name\" :  \"adam\"}"))
-inclProof.verify(head103)
+log.verify_inclusion(head103, continusec.JsonEntry("{    \"ssn\":  123.4500 ,   \"name\" :  \"adam\"}"))
 
 redEnt = log.entry(2, continusec.RedactedJsonEntryFactory())
 dd = redEnt.data()
@@ -176,8 +175,7 @@ if 'ssn' in dd:
 if 'adam' not in dd:
     raise 'fsd'
 
-inclProof = log.inclusion_proof(head103, redEnt)
-inclProof.verify(head103)
+log.verify_inclusion(head103, redEnt)
 
 client = continusec.Client("7981306761429961588", "allseeing", base_url="http://localhost:8080");
 log = client.verifiable_log("newtestlog");
@@ -190,8 +188,7 @@ if '123.45' not in dd:
 if 'adam' not in dd:
     raise 'fsd'
 
-inclProof = log.inclusion_proof(head103, redEnt)
-inclProof.verify(head103)
+log.verify_inclusion(head103, redEnt)
 
 vmap = client.verifiable_map("nnewtestmap")
 try:

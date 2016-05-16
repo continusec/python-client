@@ -324,6 +324,25 @@ class VerifiableMap(object):
 
             time.sleep(secs)
 
+	def verified_latest_map_state(self, prev):
+		head = self.verified_map_state(prev, HEAD)
+		if prev is not None:
+			if head.tree_size() <= prev.tree_size():
+				return prev
+		return head
+	
+	def verified_map_state(self, prev, tree_size):
+		if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
+			return prev
+		
+		map_head = self.tree_head(tree_size)
+		if prev is not None:
+			self.mutation_log().verify_consistency(prev.map_tree_head().mutation_log_tree_head(), map_head.mutation_log_tree_head())
+		
+		thlth = self.tree_head_log().verified_latest_tree_head(None if prev is None else prev.tree_head_log_tree_head())
+		self.tree_head_log().verify_inclusion(thlth, map_head)
+		
+		return MapTreeState(map_head, thlth)
 
 class MapEntryResponse(object):
     def __init__(self, key, value, tree_size, audit_path):
@@ -443,6 +462,15 @@ class MapTreeHead(object):
         return self._mutation_log_tree_head
     def root_hash(self):
         return self._root_hash
+
+class MapTreeState(object):
+    def __init__(self, map_head, tree_head_log_tree_head):
+        self._map_head = map_head
+        self._tree_head_log_tree_head = tree_head_log_tree_head
+    def map_head(self):
+        return self._map_head
+    def tree_head_log_tree_head(self):
+        return self._tree_head_log_tree_head
 
 class LogConsistencyProof(object):
     def __init__(self, first_size, second_size, audit_path):
@@ -581,8 +609,8 @@ class VerifiableLog(object):
                 done = True
         return rv
 
-    def inclusion_proof(self, head, leaf):
-        value, _ = self._client("GET", self._path + "/tree/" + str(head.tree_size()) + \
+    def inclusion_proof(self, tree_size, leaf):
+        value, _ = self._client("GET", self._path + "/tree/" + str(tree_size) + \
                                 "/inclusion/h/" + binascii.hexlify(leaf.leaf_hash()))
         obj = json.loads(value)
         return LogInclusionProof(leaf.leaf_hash(), int(obj['tree_size']), int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']])
@@ -593,11 +621,47 @@ class VerifiableLog(object):
         obj = json.loads(value)
         return LogInclusionProof(None, int(obj['tree_size']), int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']])
 
-    def consistency_proof(self, first, second):
-        value, _ = self._client("GET", self._path + "/tree/" + str(second.tree_size()) + \
-                                "/consistency/" + str(first.tree_size()))
-        return LogConsistencyProof(first.tree_size(), second.tree_size(), \
+    def verify_inclusion(self, head, leaf):
+        proof = self.inclusion_proof(head.tree_size(), leaf)
+        proof.verify(head)
+
+    def consistency_proof(self, first_size, second_size):
+        value, _ = self._client("GET", self._path + "/tree/" + str(second_size) + \
+                                "/consistency/" + str(first_size))
+        return LogConsistencyProof(first_size, second_size, \
                                    [base64.b64decode(x) for x in json.loads(value)['proof']])
+
+    def verify_consistency(self, a, b):
+        if a is None or b is None or a.tree_size() <= 0 or b.tree_size() <= 0:
+            raise VerificationFailedError()
+            
+        if a.tree_size() == b.tree_size():
+            if a.root_hash() != b.root_hash():
+                raise VerificationFailedError()
+            return
+        
+        if a.tree_size() > b.tree_size():
+            a, b = b, a
+            
+        proof = self.consistency_proof(a.tree_size(), b.tree_size())
+        proof.verify(a, b)
+
+    def verified_latest_tree_head(self, prev):
+        head = self.verified_tree_head(prev, HEAD)
+        if prev is not None:
+            if head.tree_size() <= prev.tree_size():
+                return prev
+        return head
+    
+    def verified_tree_head(self, prev, tree_size):
+        if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
+            return prev
+    
+        head = self.tree_head(tree_size)
+        if prev is not None:
+            self.verify_consistency(prev, head)
+        
+        return head
 
     def block_until_present(self, leaf):
         last = -1
@@ -607,8 +671,8 @@ class VerifiableLog(object):
             if lth.tree_size() > last:
                 last = lth.tree_size()
                 try:
-                    if self.inclusion_proof(lth, leaf) != None:
-                        return lth
+                    self.verify_inclusion(lth, leaf)
+                    return lth
                 except InvalidRangeError:
                     pass
                 secs = 1
@@ -617,35 +681,12 @@ class VerifiableLog(object):
 
             time.sleep(secs)
 
-    def fetch_verified_tree_head(self, prev):
-        head = self.tree_head(HEAD)
-        if head.tree_size() <= prev.tree_size():
-            return prev
-        else:
-            if prev.tree_size() != 0:
-                proof = self.consistency_proof(prev, head)
-                proof.verify(prev, head)
-
-            return head
-
-    def verify_supplied_proof(self, prev, proof):
-        headForIncl = None
-        if proof.tree_size() == prev.tree_size():
-            headForIncl = prev
-        else:
-            headForIncl = self.tree_head(proof.tree_size())
-            if prev.tree_size() != 0:
-                if prev.tree_size() < headForIncl.tree_size():
-                    self.consistency_proof(prev, headForIncl).verify(prev, headForIncl)
-                elif prev.tree_size() > headForIncl.tree_size():
-                    self.consistency_proof(headForIncl, prev).verify(headForIncl, prev)
-                else:
-                    raise VerificationFailedError()
-
+    def verify_supplied_inclusion_proof(self, prev, proof):
+        headForIncl = self.verified_tree_head(prev, proof.tree_size())
         proof.verify(headForIncl)
         return headForIncl
 
-    def audit_log_entries(self, prev, head, factory, auditor):
+    def verify_entries(self, prev, head, factory, auditor):
         if prev is None or prev.tree_size() < head.tree_size():
             stack = []
             if prev is not None and prev.tree_size() > 0:
