@@ -278,7 +278,7 @@ class VerifiableMap(object):
         self._client("PUT", self._path)
 
     def get(self, key, map_head, factory):
-        value, headers = self._client("GET", self._path + "/tree/" + str(map_head.mutation_log_tree_head().tree_size()) + \
+        value, headers = self._client("GET", self._path + "/tree/" + str(map_head.tree_size()) + \
                                       "/key/h/" + binascii.hexlify(key) + factory.format())
         proof = [None] * 256
         vts = -1
@@ -291,6 +291,11 @@ class VerifiableMap(object):
                 vts = int(v.strip())
 
         return MapEntryResponse(key, factory.create_from_bytes(value), vts, proof)
+
+    def verified_get(self, key, map_state, factory):
+        resp = self.get(key, map_state.map_head(), factory)
+        resp.verify(map_state.map_head())
+        return resp.value()
 
     def set(self, key, value):
         rv, _ = self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key) + value.format(), value.data_for_upload())
@@ -324,25 +329,26 @@ class VerifiableMap(object):
 
             time.sleep(secs)
 
-	def verified_latest_map_state(self, prev):
-		head = self.verified_map_state(prev, HEAD)
-		if prev is not None:
-			if head.tree_size() <= prev.tree_size():
-				return prev
-		return head
-	
-	def verified_map_state(self, prev, tree_size):
-		if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
-			return prev
-		
-		map_head = self.tree_head(tree_size)
-		if prev is not None:
-			self.mutation_log().verify_consistency(prev.map_tree_head().mutation_log_tree_head(), map_head.mutation_log_tree_head())
-		
-		thlth = self.tree_head_log().verified_latest_tree_head(None if prev is None else prev.tree_head_log_tree_head())
-		self.tree_head_log().verify_inclusion(thlth, map_head)
-		
-		return MapTreeState(map_head, thlth)
+    def verified_latest_map_state(self, prev):
+        head = self.verified_map_state(prev, HEAD)
+        if prev is not None:
+            if head.tree_size() <= prev.tree_size():
+                return prev
+        return head
+
+    def verified_map_state(self, prev, tree_size):
+        if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
+            return prev
+
+        map_head = self.tree_head(tree_size)
+        if prev is not None:
+            self.mutation_log().verify_consistency(prev.map_head().mutation_log_tree_head(), map_head.mutation_log_tree_head())
+
+        thlth = self.tree_head_log().verified_latest_tree_head(None if prev is None else prev.tree_head_log_tree_head())
+        self.tree_head_log().verify_inclusion(thlth, map_head)
+
+        return MapTreeState(map_head, thlth)
+
 
 class MapEntryResponse(object):
     def __init__(self, key, value, tree_size, audit_path):
@@ -454,6 +460,7 @@ class LogTreeHead(object):
     def root_hash(self):
         return self._root_hash
 
+
 class MapTreeHead(object):
     def __init__(self, mutation_log_tree_head, root_hash):
         self._mutation_log_tree_head = mutation_log_tree_head
@@ -462,6 +469,17 @@ class MapTreeHead(object):
         return self._mutation_log_tree_head
     def root_hash(self):
         return self._root_hash
+    def tree_size(self):
+        return self.mutation_log_tree_head().tree_size()
+    def leaf_hash(self):
+        return leaf_merkle_tree_hash(object_hash({
+            "mutation_log": {
+                "tree_size": self.tree_size(),
+                "tree_hash": base64.b64encode(self.mutation_log_tree_head().root_hash()),
+            },
+            "map_hash": base64.b64encode(self.root_hash()),
+        }))
+
 
 class MapTreeState(object):
     def __init__(self, map_head, tree_head_log_tree_head):
@@ -469,6 +487,8 @@ class MapTreeState(object):
         self._tree_head_log_tree_head = tree_head_log_tree_head
     def map_head(self):
         return self._map_head
+    def tree_size(self):
+        return self.map_head().tree_size()
     def tree_head_log_tree_head(self):
         return self._tree_head_log_tree_head
 
@@ -494,7 +514,7 @@ class LogConsistencyProof(object):
 
         proof = self._audit_path
         if is_pow_2(self._first_size):
-            proof = [first_hash] + proof
+            proof = [first.root_hash()] + proof
 
         fn, sn = self._first_size - 1, self._second_size - 1
         while fn & 1 == 1:
@@ -634,15 +654,15 @@ class VerifiableLog(object):
     def verify_consistency(self, a, b):
         if a is None or b is None or a.tree_size() <= 0 or b.tree_size() <= 0:
             raise VerificationFailedError()
-            
+
         if a.tree_size() == b.tree_size():
             if a.root_hash() != b.root_hash():
                 raise VerificationFailedError()
             return
-        
+
         if a.tree_size() > b.tree_size():
             a, b = b, a
-            
+
         proof = self.consistency_proof(a.tree_size(), b.tree_size())
         proof.verify(a, b)
 
@@ -652,15 +672,15 @@ class VerifiableLog(object):
             if head.tree_size() <= prev.tree_size():
                 return prev
         return head
-    
+
     def verified_tree_head(self, prev, tree_size):
         if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
             return prev
-    
+
         head = self.tree_head(tree_size)
         if prev is not None:
             self.verify_consistency(prev, head)
-        
+
         return head
 
     def block_until_present(self, leaf):
@@ -740,6 +760,7 @@ def calc_k(n):
         k <<= 1
     return k
 
+
 def generate_map_default_leaf_values():
     rv = [None] * 257
     rv[256] = leaf_merkle_tree_hash('')
@@ -747,8 +768,8 @@ def generate_map_default_leaf_values():
         rv[i] = node_merkle_tree_hash(rv[i+1], rv[i+1])
     return rv
 
-
 DEFAULT_LEAF_VALUES = generate_map_default_leaf_values()
+
 
 def construct_map_key_path(key):
     h = hashlib.sha256(key).digest()

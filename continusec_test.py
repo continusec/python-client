@@ -239,3 +239,12 @@ entryResp.verify(mrHead)
 dd = entryResp.value().data()
 if dd != "fooval29":
     raise dd
+
+mapState106 = vmap.verified_latest_map_state(None)
+vmap.verified_map_state(mapState106, 0)
+mapState2 = vmap.verified_map_state(mapState106, 2)
+if mapState2.tree_size() != 2:
+    raise ee
+val = vmap.verified_get("foo", mapState2, continusec.RawDataEntryFactory())
+if val.data() != "foo":
+    raise ff
