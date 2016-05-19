@@ -222,19 +222,19 @@ mrHead = vmap.block_until_size(mlHead.tree_size())
 if mrHead.mutation_log_tree_head().tree_size() != 106:
     raise
 
-entryResp = vmap.get("foo", mrHead, continusec.RawDataEntryFactory())
+entryResp = vmap.get("foo", mrHead.tree_size(), continusec.RawDataEntryFactory())
 entryResp.verify(mrHead)
 dd = entryResp.value().data()
 if len(dd) > 0:
     raise dd
 
-entryResp = vmap.get("foo-29", mrHead, continusec.RawDataEntryFactory())
+entryResp = vmap.get("foo-29", mrHead.tree_size(), continusec.RawDataEntryFactory())
 entryResp.verify(mrHead)
 dd = entryResp.value().data()
 if len(dd) > 0:
     raise dd
 
-entryResp = vmap.get("foo29", mrHead, continusec.RawDataEntryFactory())
+entryResp = vmap.get("foo29", mrHead.tree_size(), continusec.RawDataEntryFactory())
 entryResp.verify(mrHead)
 dd = entryResp.value().data()
 if dd != "fooval29":
