@@ -31,7 +31,6 @@ import json
 import base64
 import hashlib
 import unicodedata
-import json
 import time
 
 
@@ -44,12 +43,18 @@ class ContinusecError(Exception):
 
 
 class InvalidRangeError(ContinusecError):
-    """Indicates invalid size or range in the request, e.g. tree size too large or small, or entry not found."""
+    """
+    Indicates invalid size or range in the request, e.g. tree size too large or small,
+    or entry not found.
+    """
     pass
 
 
 class UnauthorizedError(ContinusecError):
-    """Indicates that either the wrong API Key is being used, or the account is suspended for other reasons (check billing status in console)."""
+    """
+    Indicates that either the wrong API Key is being used, or the account is suspended
+    for other reasons (check billing status in console).
+    """
     pass
 
 
@@ -79,7 +84,10 @@ class VerificationFailedError(ContinusecError):
 
 
 class NotAllEntriesReturnedError(ContinusecError):
-    """Indicates that not all entries were returned. Typically due to requesting Json, but not storing as such."""
+    """
+    Indicates that not all entries were returned. Typically due to requesting Json, but
+    not storing as such.
+    """
     pass
 
 
@@ -96,7 +104,8 @@ def object_hash_dict(o, prefix):
     """Private method. Use object_hash()."""
     x = []
     for k, v in o.items():
-        x.append(object_hash_with_redaction(k, prefix) + object_hash_with_redaction(v, prefix))
+        x.append(object_hash_with_redaction(k, prefix) +
+                 object_hash_with_redaction(v, prefix))
     x.sort()
     h = hashlib.sha256()
     h.update('d')
@@ -151,7 +160,8 @@ def object_hash_with_redaction(o, prefix="***REDACTED*** Hash: "):
     """
     Return the objecthash (https://github.com/benlaurie/objecthash) for an object.
     o is the object.
-    prefix is the prefix to use to indicate that the remainer of a string is a redacted objecthash.
+    prefix is the prefix to use to indicate that the remainer of a string is a redacted
+    objecthash.
     """
     t = type(o)
     if t is list:
@@ -164,7 +174,8 @@ def object_hash_with_redaction(o, prefix="***REDACTED*** Hash: "):
         if prefix and o.startswith(prefix):
             return binascii.unhexlify(o[len(prefix):])
         else:
-            return hashlib.sha256('u' + unicodedata.normalize("NFC", o).encode('utf-8')).digest()
+            return hashlib.sha256('u' +
+                                  unicodedata.normalize("NFC", o).encode('utf-8')).digest()
     elif t is float or t is int: # json, sigh, only knows floats, not ints
         return object_hash_float(o * 1.0)
     elif t is bool:
@@ -220,8 +231,8 @@ class Client(object):
 
     def __init__(self, account, api_key, base_url="https://api.continusec.com"):
         """
-        Create a Client for a given account with specified API Key. The base_url parameter is
-        optional and normally only used for unit tests.
+        Create a Client for a given account with specified API Key. The base_url parameter
+        is optional and normally only used for unit tests.
 
         account the account number, found on the "Settings" tab in the console.
         api_key the API Key, found on the "API Keys" tab in the console.
@@ -288,20 +299,22 @@ class VerifiableMap(object):
 
     def mutation_log(self):
         """
-        Get a pointer to the mutation log that underlies this verifiable map. Since the mutation log
-        is managed by the map, it cannot be directly modified, however all read operations are supported.
-        Note that mutations themselves are stored as Json format, so JsonEntryFactory should
-        be used for entry retrieval.
+        Get a pointer to the mutation log that underlies this verifiable map. Since the
+        mutation log is managed by the map, it cannot be directly modified, however all
+        read operations are supported.
+        Note that mutations themselves are stored as Json format, so JsonEntryFactory
+        should be used for entry retrieval.
         Returned object is of type VerifiableLog.
         """
         return VerifiableLog(self._client, self._path + '/log/mutation')
 
     def tree_head_log(self):
         """
-        Get a pointer to the tree head log that contains all map root hashes produced by this map. Since the tree head log
-        is managed by the map, it cannot be directly modified, however all read operations are supported.
-        Note that tree heaads themselves are stored as JsonEntry format, so JsonEntryFactory should
-        be used for entry retrieval.
+        Get a pointer to the tree head log that contains all map root hashes produced by
+        this map. Since the tree head log s managed by the map, it cannot be directly
+        modified, however all read operations are supported.
+        Note that tree heaads themselves are stored as JsonEntry format, so
+        JsonEntryFactory should be used for entry retrieval.
         Returned object is of type VerifiableLog.
         """
         return VerifiableLog(self._client, self._path + '/log/treehead')
@@ -318,7 +331,8 @@ class VerifiableMap(object):
         For a given key, return the value and inclusion proof for the given tree_size.
         key the key in the map.
         tree_size the tree size.
-        f the factory that should be used to instantiate the VerifiableEntry. Typically one of RawDataEntryFactory, JsonEntryFactory, RedactedJsonEntryFactory.
+        f the factory that should be used to instantiate the VerifiableEntry. Typically
+        one of RawDataEntryFactory, JsonEntryFactory, RedactedJsonEntryFactory.
         Returned object is of type MapEntryResponse.
         """
         value, headers = self._client("GET", self._path + "/tree/" + str(tree_size) + \
@@ -337,10 +351,13 @@ class VerifiableMap(object):
 
     def verified_get(self, key, map_state, factory):
         """
-        For a given key, fetch the value and inclusion proof, verify the proof for the given map_state, then return the value.
+        For a given key, fetch the value and inclusion proof, verify the proof for the
+        given map_state, then return the value.
         key the key in the map.
-        map_state the map state, as returned by verified_map_state() or verified_latest_map_state();
-        f the factory that should be used to instantiate the VerifiableEntry. Typically one of RawDataEntryFactory, JsonEntryFactory, RedactedJsonEntryFactory.
+        map_state the map state, as returned by verified_map_state() or
+        verified_latest_map_state();
+        f the factory that should be used to instantiate the VerifiableEntry. Typically
+        one of RawDataEntryFactory, JsonEntryFactory, RedactedJsonEntryFactory.
         Returned object is of type VerifiableEntry.
         """
         resp = self.get(key, map_state.map_head().tree_size(), factory)
@@ -349,21 +366,27 @@ class VerifiableMap(object):
 
     def set(self, key, value):
         """
-        Set the value for a given key in the map. Calling this has the effect of adding a mutation to the
-        mutation log for the map, which then reflects in the root hash for the map. This occurs asynchronously.
+        Set the value for a given key in the map. Calling this has the effect of adding a
+        mutation to the mutation log for the map, which then reflects in the root hash for
+        the map. This occurs asynchronously.
         key the key to set.
-        value the entry to set to key to. Typically one of RawDataEntry}, JsonEntry or RedactableJsonEntry.
-        Returned object is of type AddEntryResponse, which includes the Merkle Tree Leaf hash of the mutation log entry added.
+        value the entry to set to key to. Typically one of RawDataEntry}, JsonEntry or
+        RedactableJsonEntry.
+        Returned object is of type AddEntryResponse, which includes the Merkle Tree Leaf
+        hash of the mutation log entry added.
         """
-        rv, _ = self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key) + value.format(), value.data_for_upload())
+        rv, _ = self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key) +
+                             value.format(), value.data_for_upload())
         return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
 
     def delete(self, key):
         """
-        Delete the value for a given key from the map. Calling this has the effect of adding a mutation to the
-        mutation log for the map, which then reflects in the root hash for the map. This occurs asynchronously.
+        Delete the value for a given key from the map. Calling this has the effect of
+        adding a mutation to the mutation log for the map, which then reflects in the root
+        hash for the map. This occurs asynchronously.
         key the key to delete.
-        Returned object is of type AddEntryResponse, which includes the Merkle Tree Leaf hash of the mutation log entry added.
+        Returned object is of type AddEntryResponse, which includes the Merkle Tree Leaf
+        hash of the mutation log entry added.
         """
         rv, _ = self._client("DELETE", self._path + "/key/h/" + binascii.hexlify(key))
         return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
@@ -371,15 +394,16 @@ class VerifiableMap(object):
     def tree_head(self, tree_size=HEAD):
         """
         Get the tree hash for given tree size.
-        tree_size the tree size to retrieve the hash for, use HEAD (0) to indicate the latest tree size.
+        tree_size the tree size to retrieve the hash for, use HEAD (0) to indicate the
+        latest tree size.
         Returned object is of type MapTreeHead.
         """
         data, _ = self._client("GET", self._path + "/tree/" + str(tree_size))
         obj = json.loads(data)
         return MapTreeHead(LogTreeHead(int(obj['mutation_log']['tree_size']),
-            None if obj['mutation_log']['tree_hash'] is None
-            else base64.b64decode(obj['mutation_log']['tree_hash'])),
-            base64.b64decode(obj['map_hash']))
+                                       None if obj['mutation_log']['tree_hash'] is None
+                                       else base64.b64decode(obj['mutation_log']['tree_hash'])),
+                           base64.b64decode(obj['map_hash']))
 
     def block_until_size(self, tree_size):
         """
@@ -407,10 +431,11 @@ class VerifiableMap(object):
 
     def verified_latest_map_state(self, prev):
         """
-        verified_latest_map_state fetches the latest MapTreeState, verifies it is consistent with,
-        and newer than, any previously passed state.
+        verified_latest_map_state fetches the latest MapTreeState, verifies it is
+        consistent with, and newer than, any previously passed state.
         prev previously held MapTreeState, may be None to skip consistency checks.
-        Return the latest map state (which may be the same as passed in if none newer available). Object is of type MapTreeState.
+        Return the latest map state (which may be the same as passed in if none newer
+        available). Object is of type MapTreeState.
         """
         head = self.verified_map_state(prev, HEAD)
         if prev is not None:
@@ -420,15 +445,19 @@ class VerifiableMap(object):
 
     def verified_map_state(self, prev, tree_size):
         """
-        verified_map_state returns a wrapper for the MapTreeHead for a given tree size, along with
-        a LogTreeHead for the TreeHeadLog that has been verified to contain this map tree head.
-        The value returned by this will have been proven to be consistent with any passed prev value.
-        Note that the TreeHeadLogTreeHead returned may differ between calls, even for the same tree_size,
-        as all future LogTreeHeads can also be proven to contain the MapTreeHead.
+        verified_map_state returns a wrapper for the MapTreeHead for a given tree size,
+        along with a LogTreeHead for the TreeHeadLog that has been verified to contain
+        this map tree head.
+        The value returned by this will have been proven to be consistent with any passed
+        prev value.  Note that the TreeHeadLogTreeHead returned may differ between calls,
+        even for the same tree_size, as all future LogTreeHeads can also be proven to
+        contain the MapTreeHead.
 
-        Typical clients that only need to access current data will instead use verified_latest_map_state()
+        Typical clients that only need to access current data will instead use
+        verified_latest_map_state()
         prev previously held MapTreeState, may be null to skip consistency checks.
-        tree_size the tree size to retrieve the hash for. Pass HEAD (0) to get the latest tree size.
+        tree_size the tree size to retrieve the hash for. Pass HEAD (0) to get the latest
+        tree size.
         Return the map state for the given size. Object is of type MapTreeState.
         """
         if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
@@ -436,9 +465,12 @@ class VerifiableMap(object):
 
         map_head = self.tree_head(tree_size)
         if prev is not None:
-            self.mutation_log().verify_consistency(prev.map_head().mutation_log_tree_head(), map_head.mutation_log_tree_head())
+            self.mutation_log().verify_consistency(
+                prev.map_head().mutation_log_tree_head(),
+                map_head.mutation_log_tree_head())
 
-        thlth = self.tree_head_log().verified_latest_tree_head(None if prev is None else prev.tree_head_log_tree_head())
+        thlth = self.tree_head_log().verified_latest_tree_head(None if prev is None else
+                                                               prev.tree_head_log_tree_head())
         self.tree_head_log().verify_inclusion(thlth, map_head)
 
         return MapTreeState(map_head, thlth)
@@ -446,8 +478,9 @@ class VerifiableMap(object):
 
 class MapEntryResponse(object):
     """
-    Class to represent the response for getting an entry from a map. It contains both the value
-    itself, as well as an inclusion proof for how that value fits into the map root hash.
+    Class to represent the response for getting an entry from a map. It contains both the
+    value itself, as well as an inclusion proof for how that value fits into the map root
+    hash.
     """
     def __init__(self, key, value, tree_size, audit_path):
         """
@@ -480,9 +513,11 @@ class MapEntryResponse(object):
 
     def verify(self, head):
         """
-        For a given tree head, check to see if our proof can produce it for the same tree size.
+        For a given tree head, check to see if our proof can produce it for the same tree
+        size.
         head is of type MapTreeHead.
-        Raises exception if an error occurs. Normal exit (with no return value) indicates success.
+        Raises exception if an error occurs. Normal exit (with no return value) indicates
+        success.
         """
         if head.mutation_log_tree_head().tree_size() != self._tree_size:
             raise VerificationFailedError()
@@ -574,7 +609,10 @@ class RawDataEntry(object):
         """Get the data that should be stored."""
         return self._data
     def format(self):
-        """Get the suffix that should be added to the PUT/POST request for this data format."""
+        """
+        Get the suffix that should be added to the PUT/POST request for this data
+        format.
+        """
         return ""
     def leaf_hash(self):
         """Calculate the leaf hash for this entry."""
@@ -596,7 +634,9 @@ class JsonEntry(object):
         """Get the data that should be stored."""
         return self._data
     def format(self):
-        """Get the suffix that should be added to the PUT/POST request for this data format."""
+        """
+        Get the suffix that should be added to the PUT/POST request for this data format.
+        """
         return "/xjson"
     def leaf_hash(self):
         """Calculate the leaf hash for this entry."""
@@ -615,7 +655,9 @@ class RedactableJsonEntry(object):
         """Get the data that should be stored."""
         return self._data
     def format(self):
-        """Get the suffix that should be added to the PUT/POST request for this data format."""
+        """
+        Get the suffix that should be added to the PUT/POST request for this data format.
+        """
         return "/xjson/redactable"
 
 class RedactedJsonEntry(object):
@@ -631,7 +673,8 @@ class RedactedJsonEntry(object):
         self._data = data
     def data(self):
         """
-        Get the data for processing - this will shed any redacted nonce values and any redacted values before returning.
+        Get the data for processing - this will shed any redacted nonce values and any
+        redacted values before returning.
         Return type is a string.
         """
         return json.dumps(shed_redactable(json.loads(self._data)))
@@ -639,19 +682,36 @@ class RedactedJsonEntry(object):
         """Calculate the leaf hash for this entry."""
         return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
 
+
 class AddEntryResponse(object):
+    """
+    Contains leaf hash of entry added to log or of mutation for item set/deleted in map.
+    Returned by verifiable_log().add() and verifiable_map.set()/delete()
+    """
     def __init__(self, leaf_hash):
+        """leaf_hash is the leaf hash of the item added."""
         self._leaf_hash = leaf_hash
     def leaf_hash(self):
+        """Return the leaf hash."""
         return self._leaf_hash
 
+
 class LogTreeHead(object):
+    """
+    Class to represent the root hash for a log for a given tree size.
+    """
     def __init__(self, tree_size, root_hash):
+        """
+        tree_size is the tree size.
+        root_hash is the root hash.
+        """
         self._tree_size = tree_size
         self._root_hash = root_hash
     def tree_size(self):
+        """Return the tree size."""
         return self._tree_size
     def root_hash(self):
+        """Return the root hash."""
         return self._root_hash
 
 
@@ -662,13 +722,17 @@ class MapTreeHead(object):
     def __init__(self, mutation_log_tree_head, root_hash):
         """
         Constructor.
-        mutation_log_tree_head is a LogTreeHead for the corresponding tree hash for the mutation log
+        mutation_log_tree_head is a LogTreeHead for the corresponding tree hash for the
+        mutation log
         root_hash is the root hash for the map at this size.
         """
         self._mutation_log_tree_head = mutation_log_tree_head
         self._root_hash = root_hash
     def mutation_log_tree_head(self):
-        """Get corresponding the mutation log tree hash. Returned value is of type LogTreeHead."""
+        """
+        Get corresponding the mutation log tree hash. Returned value is of type
+        LogTreeHead.
+        """
         return self._mutation_log_tree_head
     def root_hash(self):
         """Return the map root hash for this map size."""
@@ -698,7 +762,8 @@ class MapTreeState(object):
         """
         Constructor.
         map_head the map tree head for the map (type MapTreeHead).
-        tree_head_log_tree_head the tree head for the underlying tree head log that the map_head has been verified as being included (type LogTreeHead).
+        tree_head_log_tree_head the tree head for the underlying tree head log that the
+        map_head has been verified as being included (type LogTreeHead).
         """
         self._map_head = map_head
         self._tree_head_log_tree_head = tree_head_log_tree_head
@@ -709,7 +774,10 @@ class MapTreeState(object):
         """Return the tree size this state is valid for."""
         return self.map_head().tree_size()
     def tree_head_log_tree_head(self):
-        """Return the LogTreeHead for the tree head log that the map head has been verified to be within."""
+        """
+        Return the LogTreeHead for the tree head log that the map head has been
+        verified to be within.
+        """
         return self._tree_head_log_tree_head
 
 class LogConsistencyProof(object):
@@ -721,7 +789,7 @@ class LogConsistencyProof(object):
         Creates a new LogConsistencyProof for given tree sizes and auditPath.
         second_size the size of the first tree.
         second_size the size of the second tree.
-        audit_path the audit proof returned by the server (array of byte arrayss).
+        audit_path the audit proof returned by the server (array of byte arrays).
         """
         self._first_size = first_size
         self._second_size = second_size
@@ -737,8 +805,10 @@ class LogConsistencyProof(object):
         return self._audit_path
     def verify(self, first, second):
         """
-        Verify that the consistency proof stored in this object can produce both the log tree heads passed to this method.
-        i.e, verify the append-only nature of the log between first.tree_size() and second.tree_size().
+        Verify that the consistency proof stored in this object can produce both the log
+        tree heads passed to this method.
+        i.e, verify the append-only nature of the log between first.tree_size() and
+        second.tree_size().
         first the tree head (type LogTreeHead) for the first tree size
         second the tree head (type LogTreeHead) for the second tree size
         Success is when no exception is thrown.
@@ -800,7 +870,8 @@ class LogInclusionProof(object):
         leaf_hash the Merkle Tree Leaf hash of the entry this proof is valid for.
         tree_size the tree size for which this proof is valid.
         leaf_index the index of this entry in the log.
-        audit_path the set of Merkle Tree nodes that apply to this entry in order to generate the root hash and prove inclusion.
+        audit_path the set of Merkle Tree nodes that apply to this entry in order to
+        generate the root hash and prove inclusion.
          """
         self._leaf_hash = leaf_hash
         self._tree_size = tree_size
@@ -820,7 +891,8 @@ class LogInclusionProof(object):
         return self._leaf_index
     def verify(self, head):
         """
-        For a given tree head, check to see if our proof can produce it for the same tree size.
+        For a given tree head, check to see if our proof can produce it for the same tree
+        size.
         head the LogTreeHead to compare
         Success is no error being thrown.
         """
@@ -851,7 +923,8 @@ class LogInclusionProof(object):
 
 class VerifiableLog(object):
     """
-    Class to interact with verifiable logs. Call client.verifiable_log(name) to instantiate.
+    Class to interact with verifiable logs. Call client.verifiable_log(name) to
+    instantiate.
     """
     def __init__(self, client, path):
         """
@@ -869,22 +942,27 @@ class VerifiableLog(object):
 
     def add(self, data):
         """
-        Send API call to add an entry to the log. Note the entry is added asynchronously, so while
-        the library will return as soon as the server acknowledges receipt of entry, it may not be
-        reflected in the tree hash (or inclusion proofs) until the server has sequenced the entry.
+        Send API call to add an entry to the log. Note the entry is added asynchronously,
+        so while the library will return as soon as the server acknowledges receipt of
+        entry, it may not be reflected in the tree hash (or inclusion proofs) until the
+        server has sequenced the entry.
 
         e the entry to add, often a RawDataEntry, JsonEntry} or RedactableJsonEntry.
-        Returns an object of type AddEntryResponse, which includes the Merkle Tree Leaf hash of the entry added.
-         """
-        rv, _ = self._client("POST", self._path + "/entry" + data.format(), data.data_for_upload())
+        Returns an object of type AddEntryResponse, which includes the Merkle Tree Leaf
+        hash of the entry added.
+        """
+        rv, _ = self._client("POST", self._path + "/entry" + data.format(),
+                             data.data_for_upload())
         return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
 
     def tree_head(self, tree_size=HEAD):
         """
         Get the tree hash for given tree size.
 
-        tree_size the tree size to retrieve the hash for. Pass HEAD (0) to get the latest tree size.
-        Return the tree hash (LogTreeHead) for the given size (includes the tree size actually used, if unknown before running the query).
+        tree_size the tree size to retrieve the hash for. Pass HEAD (0) to get the latest
+        tree size.
+        Return the tree hash (LogTreeHead) for the given size (includes the tree size
+        actually used, if unknown before running the query).
         """
         data, _ = self._client("GET", self._path + "/tree/" + str(tree_size))
         obj = json.loads(data)
@@ -895,7 +973,8 @@ class VerifiableLog(object):
         """
         Get the entry at the specified index.
         idx the index to retrieve (starts at zero).
-        f the type of entry to return, usually one of RawDataEntryFactory, JsonEntryFactor, RedactedJsonEntryFactory.
+        f the type of entry to return, usually one of RawDataEntryFactory,
+        JsonEntryFactory, RedactedJsonEntryFactory.
         Return the entry requested (in the type returned by the factory used).
         """
         rv, _ = self._client("GET", self._path + "/entry/" + str(idx) + factory.format())
@@ -908,7 +987,8 @@ class VerifiableLog(object):
 
         start the first entry to return (int)
         end the last entry to return (int)
-        f the type of entry to return, usually one of RawDataEntryFactory, JsonEntryFactor, RedactedJsonEntryFactory.
+        f the type of entry to return, usually one of RawDataEntryFactory,
+        JsonEntryFactory, RedactedJsonEntryFactory.
         Return a generator for the entries requested.
          """
         batch = 500
@@ -916,7 +996,8 @@ class VerifiableLog(object):
         done = False
         while start < end and not done:
             contents, _ = self._client("GET", self._path + "/entries/" + str(start) + \
-                                       "-" + str(min(start + batch, end)) + factory.format())
+                                       "-" + str(min(start + batch, end)) + \
+                                       factory.format())
             gotOne = False
             for x in json.loads(contents)["entries"]:
                 yield factory.create_from_bytes(base64.b64decode(x["leaf_data"]))
@@ -929,34 +1010,46 @@ class VerifiableLog(object):
 
     def inclusion_proof(self, tree_size, leaf):
         """
-        Get an inclusion proof for a given item for a specific tree size. Most clients will commonly use verify_inclusion() instead.
-        tree_size the tree size for which the inclusion proof should be returned. This is usually as returned by tree_head().tree_size().
-        leaf the entry for which the inclusion proof should be returned - object must implement leaf_hash(). Note that AddEntryResponse and RawDataEntry, JsonEntry, RedactedJsonEntry each implement this.
+        Get an inclusion proof for a given item for a specific tree size. Most clients
+        will commonly use verify_inclusion() instead.
+        tree_size the tree size for which the inclusion proof should be returned. This is
+        usually as returned by tree_head().tree_size().
+        leaf the entry for which the inclusion proof should be returned - object must
+        implement leaf_hash(). Note that AddEntryResponse and RawDataEntry, JsonEntry,
+        RedactedJsonEntry each implement this.
         Return a LogInclusionProof object that can be verified against a given tree hash.
         """
         value, _ = self._client("GET", self._path + "/tree/" + str(tree_size) + \
                                 "/inclusion/h/" + binascii.hexlify(leaf.leaf_hash()))
         obj = json.loads(value)
-        return LogInclusionProof(leaf.leaf_hash(), int(obj['tree_size']), int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']])
+        return LogInclusionProof(leaf.leaf_hash(), int(obj['tree_size']),
+                                 int(obj['leaf_index']),
+                                 [base64.b64decode(x) for x in obj['proof']])
 
     def inclusion_proof_by_index(self, tree_size, leaf_index):
         """
-        Get an inclusion proof for a specified tree size and leaf index. This is not used by typical clients,
-        however it can be useful for audit operations and debugging tools. Typical clients will use verify_inclusion().
+        Get an inclusion proof for a specified tree size and leaf index. This is not used
+        by typical clients, however it can be useful for audit operations and debugging
+        tools. Typical clients will use verify_inclusion().
         tree_size the tree size on which to base the proof.
         leaf_index the leaf index for which to retrieve the inclusion proof.
-        Return a partially filled in LogInclusionProof (note it will not include the MerkleTreeLeaf hash for the item).
+        Return a partially filled in LogInclusionProof (note it will not include the
+        MerkleTreeLeaf hash for the item).
         """
         value, _ = self._client("GET", self._path + "/tree/" + str(tree_size) + \
                                 "/inclusion/" + str(leaf_index))
         obj = json.loads(value)
-        return LogInclusionProof(None, int(obj['tree_size']), int(obj['leaf_index']), [base64.b64decode(x) for x in obj['proof']])
+        return LogInclusionProof(None, int(obj['tree_size']), int(obj['leaf_index']),
+                                 [base64.b64decode(x) for x in obj['proof']])
 
     def verify_inclusion(self, head, leaf):
         """
         Get an inclusion proof for a given item and verify it.
-        head the tree head (LogTreeHead) for which the inclusion proof should be returned. This is usually as returned by tree_head().
-        leaf the entry for which the inclusion proof should be returned - object must implement leaf_hash(). Note that AddEntryResponse and RawDataEntry, JsonEntry, RedactedJsonEntry each implement this.
+        head the tree head (LogTreeHead) for which the inclusion proof should be returned.
+        This is usually as returned by tree_head().
+        leaf the entry for which the inclusion proof should be returned - object must
+        implement leaf_hash(). Note that AddEntryResponse and RawDataEntry, JsonEntry,
+        RedactedJsonEntry each implement this.
         Success is indicated by no exception being thrown.
         """
         proof = self.inclusion_proof(head.tree_size(), leaf)
@@ -964,8 +1057,9 @@ class VerifiableLog(object):
 
     def consistency_proof(self, first_size, second_size):
         """
-        consistency_proof returns an audit path which contains the set of Merkle Subtree hashes
-        that demonstrate how the root hash is calculated for both the first and second tree sizes.
+        consistency_proof returns an audit path which contains the set of Merkle Subtree
+        hashes that demonstrate how the root hash is calculated for both the first and
+        second tree sizes.
         first_size the size of the first tree.
         second_size the size of the second tree.
         Return a LogConsistencyProof object that must be verified.
@@ -973,12 +1067,14 @@ class VerifiableLog(object):
         value, _ = self._client("GET", self._path + "/tree/" + str(second_size) + \
                                 "/consistency/" + str(first_size))
         return LogConsistencyProof(first_size, second_size, \
-                                   [base64.b64decode(x) for x in json.loads(value)['proof']])
+                                [base64.b64decode(x) for x in json.loads(value)['proof']])
 
     def verify_consistency(self, a, b):
         """
-        verifyConsistency takes two tree heads, retrieves a consistency proof and then verifies it.
-        The two tree heads may be in either order (even equal), but both must be greater than zero and non-nil.
+        verifyConsistency takes two tree heads, retrieves a consistency proof and then
+        verifies it.
+        The two tree heads may be in either order (even equal), but both must be greater
+        than zero and non-nil.
         a one LogTreeHead
         b another LogTreeHead
         Success is indicated by no exception being thrown.
@@ -999,11 +1095,13 @@ class VerifiableLog(object):
 
     def verified_latest_tree_head(self, prev):
         """
-        verified_latest_tree_head calls verified_tree_head() with HEAD to fetch the latest tree head,
-        and additionally verifies that it is newer than the previously passed tree head.
+        verified_latest_tree_head calls verified_tree_head() with HEAD to fetch the latest
+        tree head, and additionally verifies that it is newer than the previously passed
+        tree head.
         For first use, pass None to skip consistency checking.
         prev a previously persisted LogTreeHead.
-        Return a new LogTreeHead which has been verified to be consistent with the past tree head, or if no newer one present, the same value as passed in.
+        Return a new LogTreeHead which has been verified to be consistent with the past
+        tree head, or if no newer one present, the same value as passed in.
         """
         head = self.verified_tree_head(prev, HEAD)
         if prev is not None:
@@ -1013,12 +1111,14 @@ class VerifiableLog(object):
 
     def verified_tree_head(self, prev, tree_size):
         """
-        VerifiedTreeHead is a utility method to fetch a LogTreeHead and verifies that it is consistent with
-        a tree head earlier fetched and persisted. For first use, pass null for prev, which will
-        bypass consistency proof checking. Tree size may be older or newer than the previous head value.
+        VerifiedTreeHead is a utility method to fetch a LogTreeHead and verifies that it
+        is consistent with a tree head earlier fetched and persisted. For first use, pass
+        None for prev, which will bypass consistency proof checking. Tree size may be
+        older or newer than the previous head value.
         prev a previously persisted LogTreeHead.
         tree_size the tree size to fetch
-        Return a new LogTreeHead, which has been verified to be consistent with the past tree head, or if no newer one present, the same value as passed in.
+        Return a new LogTreeHead, which has been verified to be consistent with the past
+        tree head, or if no newer one present, the same value as passed in.
         """
         if tree_size != 0 and prev is not None and prev.tree_size() == tree_size:
             return prev
@@ -1031,11 +1131,14 @@ class VerifiableLog(object):
 
     def block_until_present(self, leaf):
         """
-        Block until the log is able to produce a LogTreeHead that includes the specified MerkleTreeLeaf.
-        This polls tree_head() and verify_inclusion() until
-        such time as a new LogTreeHead is produced that includes the given MerkleTreeLeaf. Exponential back-off
-        is used when no tree hash is available. This is intended for test use - the returned tree head is not verified for consistency.
-        leaf the leaf we should block until included (must implement leaf_hash()). Typically this is an AddEntryResponse as returned by add().
+        Block until the log is able to produce a LogTreeHead that includes the specified
+        MerkleTreeLeaf.
+        This polls tree_head() and verify_inclusion() until such time as a new LogTreeHead
+        is produced that includes the given MerkleTreeLeaf. Exponential back-off is used
+        when no tree hash is available. This is intended for test use - the returned tree
+        head is not verified for consistency.
+        leaf the leaf we should block until included (must implement leaf_hash()).
+        Typically this is an AddEntryResponse as returned by add().
         Return the first tree hash that includes this leaf (proof is not verified).
         """
         last = -1
@@ -1057,13 +1160,17 @@ class VerifiableLog(object):
 
     def verify_supplied_inclusion_proof(self, prev, proof):
         """
-        verify_supplied_inclusion_proof is a utility method that fetches any required tree heads that are needed
-        to verify a supplied LogInclusionProof. Additionally it will ensure that any fetched tree heads are consistent
-        with any prior supplied LogTreeHead. For first use, pass None for prev, which will
-        bypass consistency proof checking.
+        verify_supplied_inclusion_proof is a utility method that fetches any required tree
+        heads that are needed to verify a supplied LogInclusionProof. Additionally it will
+        ensure that any fetched tree heads are consistent with any prior supplied
+        LogTreeHead. For first use, pass None for prev, which will bypass consistency proof
+        checking.
         prev a previously persisted LogTreeHead, or none
-        proof a LogInclusionProof that may be for a different tree size than prev.tree_size()
-        Return the verified (for consistency) LogTreeHead that was used for successful verification (of inclusion) of the supplied proof. This may be older than the LogTreeHead passed in.
+        proof a LogInclusionProof that may be for a different tree size than
+        prev.tree_size()
+        Return the verified (for consistency) LogTreeHead that was used for successful
+        verification (of inclusion) of the supplied proof. This may be older than the
+        LogTreeHead passed in.
         """
         headForIncl = self.verified_tree_head(prev, proof.tree_size())
         proof.verify(headForIncl)
@@ -1071,13 +1178,21 @@ class VerifiableLog(object):
 
     def verify_entries(self, prev, head, factory, auditor):
         """
-        Utility method for auditors that wish to audit the full content of a log, as well as the log operation.
-        This method will retrieve all entries in batch from the log, and ensure that the root hash in head can be confirmed to accurately represent the contents
-        of all of the log entries. If prev is not None, then additionally it is proven that the root hash in head is consistent with the root hash in prev.
-        prev a previous LogTreeHead representing the set of entries that have been previously audited. To indicate this is has not previously been audited, pass null,
-        head the LogTreeHead up to which we wish to audit the log. Upon successful completion the caller should persist this for a future iteration.
-        auditor must implement method audit_log_entry(idx, entry) which is called sequentially for each log entry as it is encountered.
-        f the type of entry to return, usually one of RawDataEntryFactory, JsonEntryFactor, RedactedJsonEntryFactory.
+        Utility method for auditors that wish to audit the full content of a log, as well
+        as the log operation.
+        This method will retrieve all entries in batch from the log, and ensure that the
+        root hash in head can be confirmed to accurately represent the contents
+        of all of the log entries. If prev is not None, then additionally it is proven
+        that the root hash in head is consistent with the root hash in prev.
+        prev a previous LogTreeHead representing the set of entries that have been
+        previously audited. To indicate this is has not previously been audited, pass
+        None.
+        head the LogTreeHead up to which we wish to audit the log. Upon successful
+        completion the caller should persist this for a future iteration.
+        auditor must implement method audit_log_entry(idx, entry) which is called
+        sequentially for each log entry as it is encountered.
+        f the type of entry to return, usually one of RawDataEntryFactory,
+        JsonEntryFactory, RedactedJsonEntryFactory.
         """
         if prev is None or prev.tree_size() < head.tree_size():
             stack = []
@@ -1116,7 +1231,8 @@ class VerifiableLog(object):
 
 def node_merkle_tree_hash(l, r):
     """
-    Calculate the Merkle Tree Node Hash for an existing left and right hash (HASH(chr(1) || l || r)).
+    Calculate the Merkle Tree Node Hash for an existing left and right hash
+    (HASH(chr(1) || l || r)).
     l the left node hash.
     r the right node hash.
     Return the node hash for the combination.
@@ -1162,10 +1278,11 @@ DEFAULT_LEAF_VALUES = generate_map_default_leaf_values()
 
 def construct_map_key_path(key):
     """
-    Create the path in a sparse merkle tree for a given key. ie a boolean array representing
-    the big-endian index of the the hash of the key.
+    Create the path in a sparse merkle tree for a given key. ie a boolean array
+    representing the big-endian index of the the hash of the key.
     key the key
-    Returns a length 256 array of booleans representing left (false) and right (true) path in the Sparse Merkle Tree.
+    Returns a length 256 array of booleans representing left (false) and right (true) path
+    in the Sparse Merkle Tree.
     """
     h = hashlib.sha256(key).digest()
     rv = [False] * len(h) * 8
