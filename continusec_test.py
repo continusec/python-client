@@ -248,3 +248,9 @@ if mapState2.tree_size() != 2:
 val = vmap.verified_get("foo", mapState2, continusec.RawDataEntryFactory())
 if val.data() != "foo":
     raise ff
+
+if len(client.list_logs()) != 24:
+	raise
+
+if len(client.list_maps()) != 15:
+	raise

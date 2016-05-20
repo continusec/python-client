@@ -259,6 +259,22 @@ class Client(object):
         """
         return VerifiableLog(self._make_request, "/log/" + name)
 
+    def list_logs(self):
+        """
+        Return a list of LogInfo objects for each log held by the account.
+        """
+        data, _ = self._make_request("GET", "/logs")
+        obj = json.loads(data)
+        return [LogInfo(x["name"]) for x in obj["results"]]
+
+    def list_maps(self):
+        """
+        Return a list of MapInfo objects for each map held by the account.
+        """
+        data, _ = self._make_request("GET", "/maps")
+        obj = json.loads(data)
+        return [MapInfo(x["name"]) for x in obj["results"]]
+
     def _make_request(self, method, path, data=None):
         """
         Private method.
@@ -554,6 +570,7 @@ class RawDataEntryFactory(object):
         """
         return ""
 
+
 class JsonEntryFactory(object):
     """
     Factory that produces JsonEntry instances upon request.
@@ -572,6 +589,7 @@ class JsonEntryFactory(object):
         """
         return "/xjson"
 
+
 class RedactedJsonEntryFactory(object):
     """
     Factory that produces RedactedJsonEntry instances upon request.
@@ -589,6 +607,7 @@ class RedactedJsonEntryFactory(object):
         Returns the suffix added to calls to GET /entry/xxx.
         """
         return "/xjson"
+
 
 class RawDataEntry(object):
     """
@@ -618,6 +637,7 @@ class RawDataEntry(object):
         """Calculate the leaf hash for this entry."""
         return leaf_merkle_tree_hash(self._data)
 
+
 class JsonEntry(object):
     """
     Class to be used when entry MerkleTreeLeafs should be based on ObjectHash
@@ -642,6 +662,7 @@ class JsonEntry(object):
         """Calculate the leaf hash for this entry."""
         return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
 
+
 class RedactableJsonEntry(object):
     """
     Class to represent JSON data should be made Redactable by the server upon upload.
@@ -659,6 +680,7 @@ class RedactableJsonEntry(object):
         Get the suffix that should be added to the PUT/POST request for this data format.
         """
         return "/xjson/redactable"
+
 
 class RedactedJsonEntry(object):
     """
@@ -694,6 +716,26 @@ class AddEntryResponse(object):
     def leaf_hash(self):
         """Return the leaf hash."""
         return self._leaf_hash
+
+
+class LogInfo(object):
+    """Metadata about a log."""
+    def __init__(self, name):
+        """name is the name of the log."""
+        self._name = name
+    def name(self):
+        """Return the name."""
+        return self._name
+
+
+class MapInfo(object):
+    """Metadata about a map."""
+    def __init__(self, name):
+        """name is the name of the map."""
+        self._name = name
+    def name(self):
+        """Return the name."""
+        return self._name
 
 
 class LogTreeHead(object):
