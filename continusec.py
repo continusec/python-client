@@ -341,6 +341,13 @@ class VerifiableMap(object):
         """
         self._client("PUT", self._path)
 
+    def destroy(self):
+        """
+        Destroy will send an API call to delete this map - this operation removes it permanently,
+        and renders the name unusable again within the same account, so please use with caution.
+        """
+        self._client("DELETE", self._path)
+
     def get(self, key, tree_size, factory):
         """
         For a given key, return the value and inclusion proof for the given tree_size.
@@ -980,6 +987,13 @@ class VerifiableLog(object):
         calls will cause an exception to be generated.
         """
         self._client("PUT", self._path)
+
+    def destroy(self):
+        """
+        Destroy will send an API call to delete this log - this operation removes it permanently,
+        and renders the name unusable again within the same account, so please use with caution.
+        """
+        self._client("DELETE", self._path)
 
     def add(self, data):
         """

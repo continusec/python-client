@@ -250,7 +250,21 @@ if val.data() != "foo":
     raise ff
 
 if len(client.list_logs()) != 24:
-	raise
+    raise
 
 if len(client.list_maps()) != 15:
-	raise
+    raise
+
+vmap.destroy()
+try:
+    vmap.destroy()
+    raise "oops"
+except continusec.ObjectConflictError:
+    pass
+
+log.destroy()
+try:
+    log.destroy()
+    raise "oops"
+except continusec.ObjectConflictError:
+    pass
