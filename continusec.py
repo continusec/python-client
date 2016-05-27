@@ -116,7 +116,7 @@ def object_hash_dict(o, prefix):
 def object_hash_float(o):
     """Private method. Use object_hash()."""
     if o == 0.0:
-        return '+0:'
+        return hashlib.sha256('f+0:').digest()
     s = '+'
     if o < 0:
         s = '-'
