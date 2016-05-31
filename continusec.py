@@ -666,7 +666,10 @@ class JsonEntry(object):
         return "/xjson"
     def leaf_hash(self):
         """Calculate the leaf hash for this entry."""
-        return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
+        if len(self._data) == 0:
+            return leaf_merkle_tree_hash('')
+        else:
+            return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
 
 
 class RedactableJsonEntry(object):
@@ -708,7 +711,10 @@ class RedactedJsonEntry(object):
         return json.dumps(shed_redactable(json.loads(self._data)))
     def leaf_hash(self):
         """Calculate the leaf hash for this entry."""
-        return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
+        if len(self._data) == 0:
+            return leaf_merkle_tree_hash('')
+        else:
+            return leaf_merkle_tree_hash(object_hash_with_redaction(json.loads(self._data)))
 
 
 class AddEntryResponse(object):

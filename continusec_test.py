@@ -268,3 +268,19 @@ try:
     raise "oops"
 except continusec.ObjectConflictError:
     pass
+
+client = continusec.Client("7981306761429961588", "c9fc80d4e19ddbf01a4e6b5277a29e1bffa88fe047af9d0b9b36de536f85c2c6", base_url="http://localhost:8080");
+vmap = client.verifiable_map("mapjson")
+m3 = vmap.verified_latest_map_state(None)
+vmap.verified_get("stdjson", m3, continusec.JsonEntryFactory())
+vmap.verified_get("redjson", m3, continusec.RedactedJsonEntryFactory())
+vmap.verified_get("xstdjson", m3, continusec.JsonEntryFactory())
+vmap.verified_get("xredjson", m3, continusec.RedactedJsonEntryFactory())
+
+client = continusec.Client("7981306761429961588", "redacted", base_url="http://localhost:8080");
+vmap = client.verifiable_map("mapjson")
+m3 = vmap.verified_latest_map_state(None)
+vmap.verified_get("stdjson", m3, continusec.JsonEntryFactory())
+vmap.verified_get("redjson", m3, continusec.RedactedJsonEntryFactory())
+vmap.verified_get("xstdjson", m3, continusec.JsonEntryFactory())
+vmap.verified_get("xredjson", m3, continusec.RedactedJsonEntryFactory())
