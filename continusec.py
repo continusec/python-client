@@ -274,7 +274,7 @@ class Client(object):
         obj = json.loads(data)
         return [MapInfo(x["name"]) for x in obj["results"]]
 
-    def _make_request(self, method, path, data=None):
+    def _make_request(self, method, path, data=None, extraHeaders=None):
         """
         Private method.
         """
@@ -282,6 +282,9 @@ class Client(object):
         conn = {'https': httplib.HTTPSConnection, 'http': httplib.HTTPConnection} \
             [self._base_parts.scheme](self._base_parts.netloc)
         headers = {'Authorization': 'Key ' + self._api_key}
+        if extraHeaders is not None:
+            for k, v in extraHeaders.items():
+                headers[k] = v
         conn.request(method, url, data, headers)
         resp = conn.getresponse()
         if resp.status == 200:
@@ -399,6 +402,24 @@ class VerifiableMap(object):
         """
         rv, _ = self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key) +
                              value.format(), value.data_for_upload())
+        return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
+
+    def update(self, key, value, prev_leaf_hash):
+        """
+        Set the value for a given key in the map, conditional on previous leaf hash.
+        Calling this has the effect of adding a
+        mutation to the mutation log for the map, which then reflects in the root hash for
+        the map. This occurs asynchronously.
+        key the key to set.
+        value the entry to set to key to. Typically one of RawDataEntry}, JsonEntry or
+        RedactableJsonEntry.
+        prev_leaf_hash the previous leaf hash, must implement leaf_hash()
+        Returned object is of type AddEntryResponse, which includes the Merkle Tree Leaf
+        hash of the mutation log entry added.
+        """
+        rv, _ = self._client("PUT", self._path + "/key/h/" + binascii.hexlify(key) +
+                             value.format(), value.data_for_upload(), extraHeaders={
+                                 "X-Previous-LeafHash": binascii.hexlify(prev_leaf_hash.leaf_hash())})
         return AddEntryResponse(base64.b64decode(json.loads(rv)['leaf_hash']))
 
     def delete(self, key):

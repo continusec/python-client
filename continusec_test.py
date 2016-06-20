@@ -284,3 +284,7 @@ vmap.verified_get("stdjson", m3, continusec.JsonEntryFactory())
 vmap.verified_get("redjson", m3, continusec.RedactedJsonEntryFactory())
 vmap.verified_get("xstdjson", m3, continusec.JsonEntryFactory())
 vmap.verified_get("xredjson", m3, continusec.RedactedJsonEntryFactory())
+
+client = continusec.Client("7981306761429961588", "testupdate", base_url="http://localhost:8080");
+vmap = client.verifiable_map("loadtestmap2")
+vmap.update("fooyo", continusec.RawDataEntry("bar"), continusec.RawDataEntry(""))
