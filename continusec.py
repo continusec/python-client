@@ -36,6 +36,7 @@ import time
 
 HEAD = 0
 
+debugmode = False
 
 class ContinusecError(Exception):
     """Base class for exceptions in this module"""
@@ -258,33 +259,19 @@ class Client(object):
         """
         return VerifiableLog(self._make_request, "/log/" + name)
 
-    def list_logs(self):
-        """
-        Return a list of LogInfo objects for each log held by the account.
-        """
-        data, _ = self._make_request("GET", "/logs")
-        obj = json.loads(data)
-        return [LogInfo(x["name"]) for x in obj["results"]]
-
-    def list_maps(self):
-        """
-        Return a list of MapInfo objects for each map held by the account.
-        """
-        data, _ = self._make_request("GET", "/maps")
-        obj = json.loads(data)
-        return [MapInfo(x["name"]) for x in obj["results"]]
-
     def _make_request(self, method, path, data=None, extraHeaders=None):
         """
         Private method.
         """
-        url = self._base_url + "/v1/account/" + str(self._account) + path
+        url = self._base_url + "/v2/account/" + str(self._account) + path
         conn = {'https': httplib.HTTPSConnection, 'http': httplib.HTTPConnection} \
             [self._base_parts.scheme](self._base_parts.netloc)
         headers = {'Authorization': 'Key ' + self._api_key}
         if extraHeaders is not None:
             for k, v in extraHeaders.items():
                 headers[k] = v
+        if debugmode:
+            conn.set_debuglevel(99)
         conn.request(method, url, data, headers)
         resp = conn.getresponse()
         if resp.status == 200:
@@ -1048,8 +1035,8 @@ class VerifiableLog(object):
         """
         data, _ = self._client("GET", self._path + "/tree/" + str(tree_size))
         obj = json.loads(data)
-        return LogTreeHead(int(obj['tree_size']), None if obj['tree_hash'] is None else \
-                                          base64.b64decode(obj['tree_hash']))
+        return LogTreeHead(int(obj['tree_size']), None if obj['root_hash'] is None else \
+                                          base64.b64decode(obj['root_hash']))
 
     def entry(self, idx, factory):
         """
@@ -1081,8 +1068,8 @@ class VerifiableLog(object):
                                        "-" + str(min(start + batch, end)) + \
                                        factory.format())
             gotOne = False
-            for x in json.loads(contents)["entries"]:
-                yield factory.create_from_bytes(base64.b64decode(x["leaf_data"]))
+            for x in json.loads(contents)["values"]:
+                yield factory.create_from_bytes(base64.b64decode(x["leaf_input"]))
                 start += 1
                 gotOne = True
 
@@ -1106,7 +1093,7 @@ class VerifiableLog(object):
         obj = json.loads(value)
         return LogInclusionProof(leaf.leaf_hash(), int(obj['tree_size']),
                                  int(obj['leaf_index']),
-                                 [base64.b64decode(x) for x in obj['proof']])
+                                 [base64.b64decode(x) for x in obj['audit_path']])
 
     def inclusion_proof_by_index(self, tree_size, leaf_index):
         """
@@ -1122,7 +1109,7 @@ class VerifiableLog(object):
                                 "/inclusion/" + str(leaf_index))
         obj = json.loads(value)
         return LogInclusionProof(None, int(obj['tree_size']), int(obj['leaf_index']),
-                                 [base64.b64decode(x) for x in obj['proof']])
+                                 [base64.b64decode(x) for x in obj['audit_path']])
 
     def verify_inclusion(self, head, leaf):
         """
@@ -1149,7 +1136,7 @@ class VerifiableLog(object):
         value, _ = self._client("GET", self._path + "/tree/" + str(second_size) + \
                                 "/consistency/" + str(first_size))
         return LogConsistencyProof(first_size, second_size, \
-                                [base64.b64decode(x) for x in json.loads(value)['proof']])
+                                [base64.b64decode(x) for x in json.loads(value)['audit_path']])
 
     def verify_consistency(self, a, b):
         """
